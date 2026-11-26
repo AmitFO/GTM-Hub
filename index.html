@@ -608,6 +608,18 @@
     .card-desc { font-size: .78rem; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .card-tag { display: inline-block; margin-top: 8px; font-size: .68rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--c) 12%, #fff); color: var(--c); }
     .card-go { color: var(--muted); font-size: 1.2rem; transition: transform .3s var(--spring); }
+    .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+    .card-actions .card-tag { margin-top: 0; text-decoration: none; }
+    .share { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: .72rem; font-weight: 600; color: var(--ink); text-decoration: none; background: color-mix(in srgb, var(--aqua) 16%, #fff); transition: background .25s; }
+    .share:hover { background: color-mix(in srgb, var(--aqua) 28%, #fff); }
+    .share svg { width: 14px; height: 14px; color: #1F8F4E; }
+    .notice-card { --c: var(--lilac); align-items: flex-start; }
+    .notice-card .card-txt { display: grid; gap: 6px; }
+    .nc-body { font-size: .84rem; line-height: 1.5; white-space: pre-line; color: var(--ink); }
+    .nc-meta { font-size: .74rem; color: var(--muted); }
+    .nc-ack { justify-self: start; margin-top: 4px; padding: 7px 16px; border-radius: 999px; font-size: .8rem; font-weight: 600; color: #fff; background: var(--c); box-shadow: 0 6px 16px -8px var(--c); transition: transform .3s var(--spring); }
+    .nc-ack:hover { transform: translateY(-1px); }
+    .notice-card .card-tag:disabled { border: 0; }
     .card:hover .card-go { transform: translateX(4px); color: var(--c); }
 
     /* ============ Table views ============ */
@@ -960,7 +972,7 @@
       <div>
         <p class="greet" id="greet">Welcome</p>
         <h1 class="hub-title" id="hubTitle">GTM Hub</h1>
-        <!-- gtm-hub-v27 -->
+        <!-- gtm-hub-v28 -->
       </div>
       <div class="clock">
         <button class="me" id="meBtn" hidden aria-label="Your account">
@@ -993,9 +1005,17 @@
         <h2>Today at a glance <small id="kpiUpdated"></small></h2>
         <div class="kpis" id="kpis"></div>
       </div>
+      <div id="noticeBlock" hidden>
+        <h2>Notices <small id="noticeCount"></small></h2>
+        <div class="cards" id="notices"></div>
+      </div>
       <div id="tableBlock">
         <h2>Tables <small id="tableCount"></small></h2>
         <div class="cards" id="cardsTables"></div>
+      </div>
+      <div id="collateralBlock" hidden>
+        <h2>Marketing collaterals <small>open to all GTM</small></h2>
+        <div class="cards" id="collateral"></div>
       </div>
       <div id="dashBlock">
         <h2>Dashboards <small id="dashCount"></small></h2>
@@ -1180,6 +1200,13 @@
     const readJSON = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
     const CACHED = AUTH ? readJSON('gtm-cache') : null;
     let TITLE = (CACHED && CACHED.settings && CACHED.settings.title) || CFG.title || 'GTM Hub';
+    let NOTICES = AUTH ? [] : (CFG.notices || []);   // live notices come from the bridge when sign-in is on
+    const ACKS_KEY = 'gtm-acks';
+    let ACKED = new Set((() => { try { return JSON.parse(localStorage.getItem(ACKS_KEY) || '[]'); } catch (e) { return []; } })());
+    const WA_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 00-8.6 15.1L2 22l5-1.3A10 10 0 1012 2zm0 18.2a8.2 8.2 0 01-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1112 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 01-3.3-2.9c-.3-.4.3-.4.8-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 00-.7.3 3 3 0 00-.9 2.2 5.2 5.2 0 001.1 2.8 11.9 11.9 0 004.6 4c1.7.7 2.4.8 3.2.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.4-.3z"/></svg>';
+    // WhatsApp share needs no server: wa.me opens the chooser with the message already written.
+    const waLink = (text, url) => 'https://wa.me/?text=' + encodeURIComponent(url ? text + '\n' + url : text);
+
     let DASHBOARDS = AUTH ? ((CACHED && CACHED.dashboards) || []) : (CFG.dashboards || []).filter(d => d && d.id && d.url);
     const START = decodeURIComponent(location.hash.slice(1));
     const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -1295,6 +1322,7 @@
         b.addEventListener('click', () => launch(d.id, centerOf(b)));
         box.appendChild(b);
       });
+      renderNotices(); renderCollateral();
     }
     const KPI_DEFS = [
       { id: 'ot', label: 'Orders today', color: '#3A5BFF', tool: 'orders_summary', params: { period: 'today' }, value: r => INR0.format(r.orders), sub: r => '₹' + INR0.format(r.total_value) + ' value' },
@@ -1661,6 +1689,73 @@
         a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
       });
       draw();
+    }
+
+    /* ---------- Notices, collateral and WhatsApp share ---------- */
+    function renderNotices() {
+      const box = $('notices'), block = $('noticeBlock');
+      if (!box || !block) return;
+      const list = NOTICES.filter(n => n && n.id);
+      block.hidden = !list.length;
+      const open = list.filter(n => n.requireAck && !ACKED.has(n.id)).length;
+      $('noticeCount').textContent = open ? open + ' to acknowledge' : '';
+      box.innerHTML = '';
+      list.forEach((n, i) => {
+        const done = ACKED.has(n.id), c = document.createElement('div');
+        c.className = 'card notice-card'; c.style.setProperty('--i', i);
+        c.style.setProperty('--c', n.requireAck && !done ? '#A891FF' : '#00C2D1');
+        c.innerHTML = '<span class="card-txt"><span class="card-name"></span><span class="nc-body"></span><span class="nc-meta"></span></span>';
+        c.querySelector('.card-name').textContent = n.title || 'Notice';
+        c.querySelector('.nc-body').textContent = n.body || '';
+        c.querySelector('.nc-meta').textContent = [n.by, n.date].filter(Boolean).join(' · ');
+        if (n.requireAck) {
+          const b = document.createElement('button');
+          b.className = done ? 'card-tag' : 'nc-ack';
+          b.disabled = done;
+          b.textContent = done ? 'Acknowledged' : 'Got it';
+          b.addEventListener('click', () => ackNotice(n.id));
+          c.querySelector('.card-txt').appendChild(b);
+        }
+        box.appendChild(c);
+      });
+    }
+    function ackNotice(id) {
+      ACKED.add(id);
+      try { localStorage.setItem(ACKS_KEY, JSON.stringify([...ACKED])); } catch (e) {}
+      renderNotices();
+      toast('Thanks, noted.', '✅');
+      if (AUTH) api('ack', { id: id }).catch(() => toast('Saved on this device. It will sync when you are back online.', '📡'));
+    }
+    async function loadNotices() {
+      if (!AUTH) return;
+      try {
+        const j = await api('notices');
+        if (Array.isArray(j.notices)) NOTICES = j.notices;
+        if (Array.isArray(j.acked)) j.acked.forEach(id => ACKED.add(id));
+      } catch (e) { /* keep what we have */ }
+      renderNotices();
+    }
+
+    function renderCollateral() {
+      const C = CFG.collateral || {}, box = $('collateral'), block = $('collateralBlock');
+      if (!box || !block) return;
+      const items = (C.items || []).filter(x => x && x.url);
+      block.hidden = !items.length && !C.folderUrl;
+      box.innerHTML = '';
+      const add = (i, x) => {
+        const c = document.createElement('div');
+        c.className = 'card'; c.style.setProperty('--c', x.color || '#3A5BFF'); c.style.setProperty('--i', i);
+        c.innerHTML = '<span class="card-ico"></span><span class="card-txt"><div class="card-name"></div><div class="card-desc"></div>' +
+          '<span class="card-actions"><a class="card-tag" target="_blank" rel="noopener">Open</a><a class="share" target="_blank" rel="noopener">' + WA_ICON + 'Share on WhatsApp</a></span></span>';
+        c.querySelector('.card-ico').textContent = x.icon || '📄';
+        c.querySelector('.card-name').textContent = x.name;
+        c.querySelector('.card-desc').textContent = x.desc || '';
+        const open = c.querySelector('.card-tag'), share = c.querySelector('.share');
+        open.href = x.url; share.href = waLink('TMX ' + x.name, x.url);
+        box.appendChild(c);
+      };
+      items.forEach((x, i) => add(i, x));
+      if (C.folderUrl) add(items.length, { id: 'col-folder', name: 'All collaterals in Drive', desc: 'The full marketing folder', url: C.folderUrl, icon: '🗂️', color: '#5B6884' });
     }
 
     /* ---------- Radial dial ---------- */
@@ -2512,6 +2607,7 @@
         applyData(j, true);
         hideLogin();
         loadKpis();
+        loadNotices();
         maybeStart();
       } catch (e) {
         if (e.code === 'not_allowed') {

@@ -1,5 +1,5 @@
 /* GTM Hub offline support. Change VERSION when you upload big changes. */
-const VERSION = 'gtm-hub-v27';
+const VERSION = 'gtm-hub-v28';
 const SHELL = ['./', 'index.html', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
